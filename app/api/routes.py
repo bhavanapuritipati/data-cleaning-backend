@@ -86,6 +86,7 @@ async def run_pipeline_task(job_id: str, file_path: str):
         # In a real app we'd generate HTML. For now just JSON/Dict
         
         jobs[job_id]["status"] = "completed"
+        jobs[job_id]["final_report"] = final_state.get("final_report", {})  # Store report separately
         jobs[job_id]["final_state"] = final_state # Be careful with memory
         
         await manager.broadcast(job_id, {
@@ -125,6 +126,8 @@ async def get_status(job_id: str):
     # Remove non-serializable objects or large data
     if "final_state" in job_info:
         del job_info["final_state"]
+    if "final_report" in job_info:
+        del job_info["final_report"]  # Don't include full report in status
         
     return job_info
 
@@ -147,10 +150,15 @@ async def download_csv(job_id: str):
 
 @router.get("/download/{job_id}/report")
 async def download_report(job_id: str):
-    # Retrieve report from jobs or read saved file
-    # For now returning a JSON response as we haven't implemented HTML gen
-    if job_id not in jobs or "final_state" not in jobs[job_id]:
-         raise HTTPException(status_code=404, detail="Report not ready")
+    # Retrieve report from jobs
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
     
-    report = jobs[job_id]["final_state"].get("final_report")
+    if jobs[job_id]["status"] != "completed":
+        raise HTTPException(status_code=400, detail="Processing not complete")
+    
+    if "final_report" not in jobs[job_id]:
+        raise HTTPException(status_code=404, detail="Report not ready")
+    
+    report = jobs[job_id]["final_report"]
     return JSONResponse(content=report)
